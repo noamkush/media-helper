@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Media Helper for Instagram
 // @namespace    https://github.com/anomalyco/media-helper
-// @version      1.28.2
+// @version      1.28.8-debug
 // @description  Easily download Instagram pictures and videos.
 // @match        *://*.instagram.com/*
 // @grant        GM_download
@@ -64,6 +64,7 @@ GM_addStyle(`
   ._aatn: Video parent
   ._aa64: Stories parent
  */
+._aagv,
 ._ac0b {
   position: relative;
 }
@@ -152,8 +153,8 @@ if (window.location.pathname.match('/p/') || window.location.pathname.match('/tv
 
   detailBox();
 
-  if (document.querySelector('article[role="presentation"]') == null) {
-    log('Detail article not found immediately, retrying in 1s');
+  if (!_box_detail) {
+    log('Detail container not found immediately, retrying in 1s');
     setTimeout(function() {
       detailBox();
     }, 1000);
@@ -177,6 +178,9 @@ if (window.location.pathname.match('/stories/')) {
 
 
 function detailBox() {
+  // Avoid attaching findMedia twice
+  if (_box_detail) return;
+
   /*
     Dialog
   */
@@ -204,12 +208,13 @@ function detailBox() {
     Absolute
   */
   else {
-    log('Detail: no dialog, using main[role="main"]');
-    _box_detail = document.querySelector('main[role="main"]');
+    _box_detail = document.querySelector('div[role="presentation"]') ||
+                  document.querySelector('main[role="main"]');
     if (!_box_detail) {
-      warn('Detail: main[role="main"] not found — selector may be outdated');
+      warn('Detail: neither div[role="presentation"] nor main[role="main"] found — selector may be outdated');
       return;
     }
+    log('Detail: no dialog, using', _box_detail.tagName, 'role=' + _box_detail.getAttribute('role'));
     findMedia(_box_detail);
   }
 }
@@ -218,28 +223,44 @@ function findMedia(box, way) {
   var _box = box, _way = way;
   var _parent, _url, _username;
 
+  log('findMedia: attaching mouseover to', _box.tagName, _box.className || _box.id || '(no class/id)', 'way:', _way || 'detail/home');
+
   _box.addEventListener('mouseover', function(event) {
+
+    if (event.target.tagName === 'IMG') {
+      log('mouseover IMG — className:', JSON.stringify(event.target.className), '| width:', event.target.width);
+    } else {
+      var _aagvCheck = event.target.closest('._aagv');
+      if (_aagvCheck) log('mouseover non-IMG inside ._aagv — target tag:', event.target.tagName, '| className:', JSON.stringify(event.target.className));
+    }
 
     /*
       Picture
 
-      img class: x5yr21d xu96u03 x10l6tqk x13vifvy x87ps6o xh8yej3
+      Match any element inside ._aagv (Instagram may set pointer-events:none on the img itself)
     */
-    if (event.target.className === 'x5yr21d xu96u03 x10l6tqk x13vifvy x87ps6o xh8yej3') {
+    var _aagvEl = event.target.closest('._aagv') ||
+                  (event.target.closest('._aagu') && event.target.closest('._aagu').querySelector('._aagv'));
+    if (_aagvEl) {
+      var _imgEl = _aagvEl.querySelector('img');
+      log('Picture ._aagv matched — img width:', _imgEl ? _imgEl.width : 'no img found');
 
       // disabled on the thumbnail page
-      if (event.target.width > 300) {
-        _parent = event.target.parentNode;
-        _url = event.target.src;
+      if (_imgEl && _imgEl.width > 300) {
+        _parent = _aagvEl;
+        _url = _imgEl.src;
         _username = '';
 
-        articles = _parent.parents('article').concat(_parent.parents('main'));
-        if (articles[0].querySelector('a[role="link"].notranslate._a6hd')) {
+        var articles = _parent.parents('article').concat(_parent.parents('main'));
+        log('Picture ancestors found — article count:', _parent.parents('article').length, '| main count:', _parent.parents('main').length);
+        if (articles[0] && articles[0].querySelector('a[role="link"].notranslate._a6hd')) {
           _username = articles[0].querySelector('a[role="link"].notranslate._a6hd').textContent.trim();
         }
 
         log('Picture detected, user:', _username || '(unknown)', 'url:', _url);
         addBtn(_parent, _url, _username);
+      } else if (_imgEl) {
+        log('Picture ._aagv matched but width too small (thumbnail), skipping — width:', _imgEl.width);
       }
 
     }
@@ -256,8 +277,8 @@ function findMedia(box, way) {
       _url = _parent.querySelector('._ab1d').src;
       _username = '';
 
-      if (_parent.parents('article')[0].querySelector('a[role="link"].notranslate._a6hd')) {
-        _username = _parent.parents('article')[0].querySelector('a[role="link"].notranslate._a6hd').textContent.trim();
+      if (_parent.parents('article').concat(_parent.parents('main'))[0]?.querySelector('a[role="link"].notranslate._a6hd')) {
+        _username = _parent.parents('article').concat(_parent.parents('main'))[0].querySelector('a[role="link"].notranslate._a6hd').textContent.trim();
       }
 
       log('Video detected, user:', _username || '(unknown)', 'url:', _url);
@@ -310,10 +331,14 @@ function addBtn(parent, url, username) {
   var _filename = username + '_' + _url_param.substring(_url_param.lastIndexOf('/') + 1, _url_param.length);
   var _flag = true;
 
+  log('addBtn called — parent:', _parent.className, '| url:', _url.substring(0, 80));
+
   if (_parent.querySelector('.downloadBtn')) {
     if (_parent.querySelector('.downloadBtn').getAttribute('data-url')) {
+      log('addBtn: button already present with data-url, reusing');
       _flag = false;
     } else {
+      log('addBtn: stale button found (no data-url), removing');
       _parent.removeChild(_parent.querySelector('.downloadBtn'));
     }
   }
@@ -335,7 +360,10 @@ function addBtn(parent, url, username) {
     _url_param = _url.indexOf('?') >= 0 ? _url.substring(0, _url.indexOf('?')) : _url;
     _filename = username + '_' + _url_param.substring(_url_param.lastIndexOf('/') + 1, _url_param.length);
   } else {
+    _btn.setAttribute('data-url', _url);
+    log('addBtn: appending button to', _parent.className, 'in 100ms');
     setTimeout(function() {
+      log('addBtn: setTimeout fired — appending button now');
       _parent.appendChild(_btn);
     }, 100);
   }
