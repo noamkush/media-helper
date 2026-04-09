@@ -61,7 +61,6 @@ GM_addStyle(`
 
 /*
   ._aagv: Picture parent
-  ._aatn: Video parent
   ._aa64: Stories parent
  */
 ._aagv,
@@ -70,13 +69,11 @@ GM_addStyle(`
 }
 
 ._aagv:hover .downloadBtn,
-._aatn:hover .downloadBtn,
 ._ac0b:hover .downloadBtn {
   opacity: 1;
 }
 
-._aagv:active .downloadBtn,
-._aatn:active .downloadBtn {
+._aagv:active .downloadBtn {
   opacity: .9;
 }
 
@@ -147,7 +144,7 @@ if (window.location.pathname === '/') {
 }
 
 /*  Detail page */
-if (window.location.pathname.match('/p/') || window.location.pathname.match('/tv/')) {
+if (window.location.pathname.match('/p/')) {
   log('Page type: detail');
   var _box_detail = '';
 
@@ -184,23 +181,24 @@ function detailBox() {
   /*
     Dialog
   */
-  if (document.querySelector('div[role="dialog"]')) {
-    if (document.querySelector('div[role="dialog"]').querySelector('article')) {
+  var _dialog = document.querySelector('div[role="dialog"]');
+  if (_dialog) {
+    if (_dialog.querySelector('article')) {
       log('Detail: dialog with article found immediately');
-      _box_detail = document.querySelector('div[role="dialog"]').querySelector('article');
+      _box_detail = _dialog.querySelector('article');
       findMedia(_box_detail);
     } else {
       log('Detail: dialog found but article missing, attaching MutationObserver');
       var _config = { childList: true, subtree: true };
       var _callback = function() {
-        _box_detail = document.querySelector('div[role="dialog"]').querySelector('article');
+        _box_detail = _dialog.querySelector('article');
         log('Detail: article appeared in dialog via MutationObserver');
         findMedia(_box_detail);
         _observer.disconnect();
       };
       var _observer = new MutationObserver(_callback);
 
-      _observer.observe(document.querySelector('div[role="dialog"]'), _config);
+      _observer.observe(_dialog, _config);
     }
   }
 
@@ -266,28 +264,7 @@ function findMedia(box, way) {
     }
 
     /*
-      Video & IG TV
-
-      video class: _ab1d
-      video play cover class: _aakl
-    */
-    if (event.target.className === '_aakl') {
-
-      _parent = event.target.parentNode;
-      _url = _parent.querySelector('._ab1d').src;
-      _username = '';
-
-      if (_parent.parents('article').concat(_parent.parents('main'))[0]?.querySelector('a[role="link"].notranslate._a6hd')) {
-        _username = _parent.parents('article').concat(_parent.parents('main'))[0].querySelector('a[role="link"].notranslate._a6hd').textContent.trim();
-      }
-
-      log('Video detected, user:', _username || '(unknown)', 'url:', _url);
-      addBtn(_parent, _url, _username);
-
-    }
-
-    /*
-      Stories Picture & Video
+      Stories Picture
 
       _ac0y parent: cover box (when autoplay videos disable, user click the cover box to play the video)
 
@@ -297,16 +274,6 @@ function findMedia(box, way) {
 
       var _parent = document.querySelector('._ac0b');
       _username = _parent.querySelector('header a:not(:has(img))').text;
-
-      // Stories Video: video 'if' in front of the image
-      if (_parent.querySelector('video')) {
-        _url = _parent.querySelector('video').src;
-
-        log('Stories video detected, user:', _username || '(unknown)', 'url:', _url);
-        addBtn(_parent, _url, _username);
-
-        return false;
-      }
 
       // Stories Picture
       if (_parent.querySelector('img')) {
@@ -346,12 +313,6 @@ function addBtn(parent, url, username) {
   var _btn = document.createElement('button');
   _btn.type = 'button';
   _btn.className = window.location.pathname.match('/stories/') ? 'downloadBtn inStories' : _btn.className = 'downloadBtn';
-
-  // Video & No Button
-  if (_url.indexOf('blob') >= 0 && _flag) {
-    warn('Blob video URL detected — cannot download (unsupported):', _url);
-    return false;
-  }
 
   // Has Button
   if (!_flag) {
