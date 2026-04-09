@@ -61,15 +61,15 @@ GM_addStyle(`
 
 /*
   ._aagv: Picture parent
-  ._aa64: Stories parent
+  .xyzq4qe.x5yr21d.x87ps6o: Stories card root (current)
  */
 ._aagv,
-._ac0b {
+div.xyzq4qe.x87ps6o {
   position: relative;
 }
 
 ._aagv:hover .downloadBtn,
-._ac0b:hover .downloadBtn {
+div.xyzq4qe.x87ps6o:hover .downloadBtn {
   opacity: 1;
 }
 
@@ -117,61 +117,95 @@ Element.prototype.parents = function(selector) {
 /*
   Main
 */
-log('Script loaded on', window.location.pathname);
 
-/*  Home page */
-if (window.location.pathname === '/') {
-  log('Page type: home');
-  var _box_home = document.querySelector('body section > main .xw7yly9');
-
-  if (_box_home) {
-    log('Home feed container found immediately');
-    findMedia(_box_home);
-  } else {
-    log('Home feed container not found immediately, retrying in 1s');
+// Patch history API to fire a custom event on pushState/replaceState,
+// since popstate alone does not fire on programmatic navigation.
+(function() {
+  function patchHistory(method) {
+    var original = history[method];
+    history[method] = function() {
+      var result = original.apply(this, arguments);
+      window.dispatchEvent(new Event('locationchange'));
+      return result;
+    };
   }
+  patchHistory('pushState');
+  patchHistory('replaceState');
+  window.addEventListener('popstate', function() {
+    window.dispatchEvent(new Event('locationchange'));
+  });
+})();
 
-  setTimeout(function() {
-    _box_home = document.querySelector('body section > main .xw7yly9');
+var _box_detail = '';
+var _storiesInitialized = false;
+
+function initPage() {
+  var path = window.location.pathname;
+  log('initPage:', path);
+
+  /*  Home page */
+  if (path === '/') {
+    log('Page type: home');
+    var _box_home = document.querySelector('body section > main .xw7yly9');
 
     if (_box_home) {
-      log('Home feed container found after delay');
+      log('Home feed container found immediately');
       findMedia(_box_home);
     } else {
-      warn('Home feed container not found after delay — selector may be outdated');
+      log('Home feed container not found immediately, retrying in 1s');
+      setTimeout(function() {
+        _box_home = document.querySelector('body section > main .xw7yly9');
+        if (_box_home) {
+          log('Home feed container found after delay');
+          findMedia(_box_home);
+        } else {
+          warn('Home feed container not found after delay — selector may be outdated');
+        }
+      }, 1000);
     }
-  }, 1000);
-}
+  }
 
-/*  Detail page */
-if (window.location.pathname.match('/p/')) {
-  log('Page type: detail');
-  var _box_detail = '';
+  /*  Detail page */
+  if (path.match('/p/')) {
+    log('Page type: detail');
+    _box_detail = '';
+    detailBox();
 
-  detailBox();
+    if (!_box_detail) {
+      log('Detail container not found immediately, retrying in 1s');
+      setTimeout(detailBox, 1000);
+    }
+  }
 
-  if (!_box_detail) {
-    log('Detail container not found immediately, retrying in 1s');
+  /*  Stories page */
+  if (path.match('/stories/')) {
+    if (_storiesInitialized) {
+      log('Page type: stories — already initialized, skipping');
+      return;
+    }
+    log('Page type: stories');
     setTimeout(function() {
-      detailBox();
-    }, 1000);
+      // The stories viewer is a <section> inside the main flex container
+      var _box_story = document.querySelector('section.x5yr21d.x78zum5') ||
+                       document.querySelector('section[class*="x5yr21d"]');
+
+      if (_box_story) {
+        log('Stories container found');
+        _storiesInitialized = true;
+        findMedia(_box_story, 'stories');
+      } else {
+        warn('Stories container not found — selector may be outdated');
+      }
+    }, 50);
+  } else {
+    // Reset when leaving stories so re-entry re-attaches
+    _storiesInitialized = false;
   }
 }
 
-/*  Stories page */
-if (window.location.pathname.match('/stories/')) {
-  log('Page type: stories');
-  setTimeout(function() {
-    var _box_story = document.querySelector('section._ac0a > div._ac0b');
-
-    if (_box_story) {
-      log('Stories container found');
-      findMedia(_box_story, 'stories');
-    } else {
-      warn('Stories container not found — selector may be outdated');
-    }
-  }, 50);
-}
+log('Script loaded on', window.location.pathname);
+initPage();
+window.addEventListener('locationchange', initPage);
 
 
 function detailBox() {
@@ -266,26 +300,28 @@ function findMedia(box, way) {
     /*
       Stories Picture
 
-      _ac0y parent: cover box (when autoplay videos disable, user click the cover box to play the video)
-
-      Debug: click more button stop auto video
+      Detect mouseover on the story image or its container.
+      The story card root is div.xyzq4qe.x87ps6o which wraps
+      both the header and the image content.
     */
-    if (event.target.className === 'x5yr21d x10l6tqk x17qophe x13vifvy xh8yej3' && _way === 'stories') {
+    if (_way === 'stories') {
+      var _storyCard = event.target.closest('div.xyzq4qe.x87ps6o');
+      if (_storyCard) {
+        var _storyImg = _storyCard.querySelector('img[referrerpolicy="origin-when-cross-origin"]') ||
+                        _storyCard.querySelector('img[draggable="false"]:not([alt=""])');
 
-      var _parent = document.querySelector('._ac0b');
-      _username = _parent.querySelector('header a:not(:has(img))').text;
+        if (_storyImg && _storyImg.src) {
+          _parent = _storyCard;
+          _url = _storyImg.src;
 
-      // Stories Picture
-      if (_parent.querySelector('img')) {
+          var _usernameEl = _storyCard.querySelector('header a:not(:has(img))') ||
+                            _storyCard.querySelector('a._a6hd:not(:has(img))');
+          _username = _usernameEl ? (_usernameEl.textContent || _usernameEl.text || '').trim() : '';
 
-        _url = _parent.querySelector('img').src;
-
-        log('Stories picture detected, user:', _username || '(unknown)', 'url:', _url);
-        addBtn(_parent, _url, _username);
-
-        return false;
+          log('Stories picture detected, user:', _username || '(unknown)', 'url:', _url);
+          addBtn(_parent, _url, _username);
+        }
       }
-
     }
 
   });
