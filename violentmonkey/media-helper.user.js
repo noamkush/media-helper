@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Media Helper for Instagram
 // @namespace    https://github.com/anomalyco/media-helper
-// @version      1.28.8-debug
+// @version      1.28.9
 // @description  Easily download Instagram pictures and videos.
 // @match        *://*.instagram.com/*
 // @grant        GM_download
@@ -60,20 +60,22 @@ GM_addStyle(`
 }
 
 /*
-  ._aagv: Picture parent
+  ._aagu: Picture outer wrapper (parent of ._aagv)
+  ._aagv: Picture aspect-ratio box — has overflow:hidden so button must live in ._aagu
   .xyzq4qe.x5yr21d.x87ps6o: Stories card root (current)
  */
+._aagu,
 ._aagv,
 div.xyzq4qe.x87ps6o {
   position: relative;
 }
 
-._aagv:hover .downloadBtn,
+._aagu:hover .downloadBtn,
 div.xyzq4qe.x87ps6o:hover .downloadBtn {
   opacity: 1;
 }
 
-._aagv:active .downloadBtn {
+._aagu:active .downloadBtn {
   opacity: .9;
 }
 
@@ -146,22 +148,29 @@ function initPage() {
   /*  Home page */
   if (path === '/') {
     log('Page type: home');
-    var _box_home = document.querySelector('body section > main .xw7yly9');
+    var _box_home = document.querySelector('body section > main .xw7yly9') ||
+                    document.querySelector('main[role="main"]');
 
     if (_box_home) {
       log('Home feed container found immediately');
       findMedia(_box_home);
     } else {
-      log('Home feed container not found immediately, retrying in 1s');
-      setTimeout(function() {
-        _box_home = document.querySelector('body section > main .xw7yly9');
-        if (_box_home) {
-          log('Home feed container found after delay');
-          findMedia(_box_home);
-        } else {
-          warn('Home feed container not found after delay — selector may be outdated');
+      log('Home feed container not found immediately, setting up MutationObserver');
+      var _homeObserver = new MutationObserver(function(mutations, obs) {
+        var _container = document.querySelector('body section > main .xw7yly9') ||
+                         document.querySelector('main[role="main"]');
+        if (_container) {
+          log('Home feed container found via MutationObserver');
+          obs.disconnect();
+          findMedia(_container);
         }
-      }, 1000);
+      });
+      _homeObserver.observe(document.body, { childList: true, subtree: true });
+      // Disconnect after 30s to avoid memory leaks if page never loads feed
+      setTimeout(function() {
+        _homeObserver.disconnect();
+        warn('Home feed container not found after 30s — selector may be outdated');
+      }, 30000);
     }
   }
 
@@ -269,22 +278,26 @@ function findMedia(box, way) {
     /*
       Picture
 
-      Match any element inside ._aagv (Instagram may set pointer-events:none on the img itself)
+      Match any element inside ._aagv (Instagram may set pointer-events:none on the img itself).
+      Button is injected into ._aagu (parent of ._aagv) to avoid overflow:hidden on ._aagv
+      clipping the absolutely-positioned button.
     */
     var _aagvEl = event.target.closest('._aagv') ||
                   (event.target.closest('._aagu') && event.target.closest('._aagu').querySelector('._aagv'));
     if (_aagvEl) {
       var _imgEl = _aagvEl.querySelector('img');
+      // Inject into _aagu (parent) so overflow:hidden on _aagv doesn't clip the button
+      var _aaguEl = _aagvEl.closest('._aagu') || _aagvEl.parentElement;
       log('Picture ._aagv matched — img width:', _imgEl ? _imgEl.width : 'no img found');
 
       // disabled on the thumbnail page
       if (_imgEl && _imgEl.width > 300) {
-        _parent = _aagvEl;
+        _parent = _aaguEl;
         _url = _imgEl.src;
         _username = '';
 
-        var articles = _parent.parents('article').concat(_parent.parents('main'));
-        log('Picture ancestors found — article count:', _parent.parents('article').length, '| main count:', _parent.parents('main').length);
+        var articles = _aagvEl.parents('article').concat(_aagvEl.parents('main'));
+        log('Picture ancestors found — article count:', _aagvEl.parents('article').length, '| main count:', _aagvEl.parents('main').length);
         if (articles[0] && articles[0].querySelector('a[role="link"].notranslate._a6hd')) {
           _username = articles[0].querySelector('a[role="link"].notranslate._a6hd').textContent.trim();
         }
@@ -346,6 +359,13 @@ function addBtn(parent, url, username) {
     }
   }
 
+  // Guard against multiple rapid mouseover calls scheduling duplicate appends
+  // before the first setTimeout fires (race condition).
+  if (_flag && _parent.getAttribute('data-mh-pending')) {
+    log('addBtn: append already pending, skipping duplicate');
+    return;
+  }
+
   var _btn = document.createElement('button');
   _btn.type = 'button';
   _btn.className = window.location.pathname.match('/stories/') ? 'downloadBtn inStories' : _btn.className = 'downloadBtn';
@@ -358,10 +378,17 @@ function addBtn(parent, url, username) {
     _filename = username + '_' + _url_param.substring(_url_param.lastIndexOf('/') + 1, _url_param.length);
   } else {
     _btn.setAttribute('data-url', _url);
+    _parent.setAttribute('data-mh-pending', '1');
     log('addBtn: appending button to', _parent.className, 'in 100ms');
     setTimeout(function() {
-      log('addBtn: setTimeout fired — appending button now');
-      _parent.appendChild(_btn);
+      _parent.removeAttribute('data-mh-pending');
+      // Re-check: another button may have been appended while we waited
+      if (!_parent.querySelector('.downloadBtn')) {
+        log('addBtn: setTimeout fired — appending button now');
+        _parent.appendChild(_btn);
+      } else {
+        log('addBtn: setTimeout fired — button already present, skipping append');
+      }
     }, 100);
   }
 
