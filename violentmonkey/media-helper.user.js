@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Media Helper for Instagram
 // @namespace    https://github.com/anomalyco/media-helper
-// @version      1.28.9
+// @version      1.28.12
 // @description  Easily download Instagram pictures and videos.
 // @match        *://*.instagram.com/*
 // @grant        GM_download
@@ -260,6 +260,19 @@ function detailBox() {
   }
 }
 
+/**
+ * Extract the post author username from a container element.
+ * Looks inside a header element first to avoid matching "Liked by" links,
+ * and excludes anchor tags that wrap images (avatar links).
+ */
+function extractUsername(container) {
+  var header = container.querySelector('header._aaqw') ||
+               container.querySelector('header');
+  var anchor = (header || container).querySelector('a[role="link"]._a6hd:not(:has(img))') ||
+               (header || container).querySelector('a._a6hd:not(:has(img))');
+  return anchor ? (anchor.textContent || anchor.text || '').trim() : '';
+}
+
 function findMedia(box, way) {
   var _box = box, _way = way;
   var _parent, _url, _username;
@@ -298,8 +311,8 @@ function findMedia(box, way) {
 
         var articles = _aagvEl.parents('article').concat(_aagvEl.parents('main'));
         log('Picture ancestors found — article count:', _aagvEl.parents('article').length, '| main count:', _aagvEl.parents('main').length);
-        if (articles[0] && articles[0].querySelector('a[role="link"].notranslate._a6hd')) {
-          _username = articles[0].querySelector('a[role="link"].notranslate._a6hd').textContent.trim();
+        if (articles[0]) {
+          _username = extractUsername(articles[0]);
         }
 
         log('Picture detected, user:', _username || '(unknown)', 'url:', _url);
@@ -327,9 +340,7 @@ function findMedia(box, way) {
           _parent = _storyCard;
           _url = _storyImg.src;
 
-          var _usernameEl = _storyCard.querySelector('header a:not(:has(img))') ||
-                            _storyCard.querySelector('a._a6hd:not(:has(img))');
-          _username = _usernameEl ? (_usernameEl.textContent || _usernameEl.text || '').trim() : '';
+          _username = extractUsername(_storyCard);
 
           log('Stories picture detected, user:', _username || '(unknown)', 'url:', _url);
           addBtn(_parent, _url, _username);
