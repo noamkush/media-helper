@@ -118,10 +118,8 @@ function findMedia(box, way) {
         _username = '';
 
         articles = _parent.parents('article').concat(_parent.parents('main'));
-        if (articles[0].querySelector('.x1lliihq a[role="link"].notranslate')) {
-          _username = articles[0].querySelector('.x1lliihq a[role="link"].notranslate').text;
-        } else if (articles[0].querySelector('._aaqt a[role="link"]')) {
-          _username = articles[0].querySelector('._aaqt a[role="link"]').text;
+        if (articles[0].querySelector('a[role="link"].notranslate._a6hd')) {
+          _username = articles[0].querySelector('a[role="link"].notranslate._a6hd').textContent.trim();
         }
 
         addBtn(_parent, _url, _username);
@@ -141,8 +139,8 @@ function findMedia(box, way) {
       _url = _parent.querySelector('._ab1d').src;
       _username = '';
 
-      if (_parent.parents('article')[0].querySelector('._aaqt a[role="link"]')) {
-        _username = _parent.parents('article')[0].querySelector('._aaqt a[role="link"]').text;
+      if (_parent.parents('article')[0].querySelector('a[role="link"].notranslate._a6hd')) {
+        _username = _parent.parents('article')[0].querySelector('a[role="link"].notranslate._a6hd').textContent.trim();
       }
 
       addBtn(_parent, _url, _username);
