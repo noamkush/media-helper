@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Media Helper for Instagram
 // @namespace    https://github.com/anomalyco/media-helper
-// @version      1.29.0
+// @version      1.30.0
 // @description  Easily download Instagram pictures.
 // @match        *://*.instagram.com/*
 // @grant        GM_download
@@ -115,6 +115,37 @@ function findImg(parent, inStories) {
     : parent.querySelector('._aagv img');
 }
 
+function largestUrl(candidates) {
+  return candidates.reduce(function(a, b) { return b.width * b.height > a.width * a.height ? b : a; }).url;
+}
+
+// The story <img> is sized to the window. React props hold the full-size original for the
+// reel the page was opened on; other reels only hold Relay references, so fall back to the media info API.
+async function fullSizeStoryUrl(img) {
+  var id = window.location.pathname.split('/').filter(Boolean)[2];
+  if (!id) return null;
+
+  var key = Object.keys(img).find(function(k) { return k.startsWith('__reactFiber$'); });
+  for (var fiber = key && img[key]; fiber; fiber = fiber.return) {
+    var reel = fiber.memoizedProps && fiber.memoizedProps.reel;
+    var item = reel && reel.items && reel.items.find(function(i) {
+      return String(i.pk) === id && i.image_versions2;
+    });
+    if (item) return largestUrl(item.image_versions2.candidates);
+  }
+
+  try {
+    var res = await fetch(window.location.origin + '/api/v1/media/' + id + '/info/', {
+      credentials: 'include',
+      headers: { 'X-IG-App-ID': '936619743392459' }
+    });
+    return largestUrl((await res.json()).items[0].image_versions2.candidates);
+  } catch (err) {
+    warn('Full-size lookup failed, using on-screen image', err);
+    return null;
+  }
+}
+
 // One delegated listener on document covers home, post, dialog and stories, and survives SPA navigation.
 document.addEventListener('mouseover', function(event) {
   var inStories = window.location.pathname.startsWith('/stories/');
@@ -133,17 +164,18 @@ document.addEventListener('mouseover', function(event) {
   btn.setAttribute('aria-label', 'Download');
   btn.title = 'Download';
 
-  btn.addEventListener('click', function(clickEvent) {
+  btn.addEventListener('click', async function(clickEvent) {
     clickEvent.stopPropagation();
 
     // Read at click time: the story card is reused across stories.
     var img = findImg(parent, inStories);
     if (!img || !img.src) return warn('No image found to download');
+    var url = (inStories && await fullSizeStoryUrl(img)) || img.src;
     var box = inStories ? parent : parent.closest('article') || parent.closest('main');
-    var filename = (box ? extractUsername(box) : '') + '_' + new URL(img.src).pathname.split('/').pop();
+    var filename = (box ? extractUsername(box) : '') + '_' + new URL(url).pathname.split('/').pop();
 
     GM_download({
-      url: img.src,
+      url: url,
       name: filename,
       headers: {
         'Referer': 'https://www.instagram.com/'
