@@ -1,11 +1,15 @@
 // ==UserScript==
 // @name         Media Helper for Instagram
 // @namespace    https://github.com/anomalyco/media-helper
-// @version      1.30.0
-// @description  Easily download Instagram pictures.
+// @version      1.31.0
+// @description  Easily download Instagram pictures and skip video stories.
 // @match        *://*.instagram.com/*
 // @grant        GM_download
 // @grant        GM_addStyle
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @grant        GM_unregisterMenuCommand
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -191,3 +195,32 @@ document.addEventListener('mouseover', function(event) {
 
   parent.appendChild(btn);
 });
+
+// Skip video stories. 'play' doesn't bubble, so listen in the capture phase.
+// Each story is skipped once, so going back to a video lets it play.
+var skipVideos = GM_getValue('skipVideos', true);
+var skipMenuId;
+function updateSkipMenu() {
+  if (skipMenuId) GM_unregisterMenuCommand(skipMenuId);
+  skipMenuId = GM_registerMenuCommand((skipVideos ? 'Stop' : 'Start') + ' skipping video stories', function() {
+    skipVideos = !skipVideos;
+    GM_setValue('skipVideos', skipVideos);
+    updateSkipMenu();
+  });
+}
+updateSkipMenu();
+
+var skippedStory;
+document.addEventListener('play', function(event) {
+  var video = event.target;
+  if (!skipVideos || video.tagName !== 'VIDEO' || !window.location.pathname.startsWith('/stories/')) return;
+  var id = window.location.pathname.split('/').filter(Boolean)[2];
+  if (id === skippedStory) return;
+  skippedStory = id;
+  video.pause();
+  // The page has two Next buttons; only the one nearest the video advances this story.
+  for (var el = video.parentElement; el; el = el.parentElement) {
+    var next = el.querySelector('[aria-label="Next"]');
+    if (next) return (next.closest('button, [role="button"]') || next).click();
+  }
+}, true);
