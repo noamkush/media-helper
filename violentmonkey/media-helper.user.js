@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Media Helper for Instagram
 // @namespace    https://github.com/anomalyco/media-helper
-// @version      1.32.0
+// @version      1.33.0
 // @description  Easily download Instagram pictures and skip video stories.
 // @match        *://*.instagram.com/*
 // @grant        GM_download
@@ -19,9 +19,6 @@ const LOG_PREFIX = '[Media Helper]';
 function log(...args)  { console.log(LOG_PREFIX, ...args); }
 function warn(...args) { console.warn(LOG_PREFIX, ...args); }
 
-/*
-  Styles (inlined from style.css)
-*/
 GM_addStyle(`
 .downloadBtn {
   position: absolute;
@@ -35,23 +32,15 @@ GM_addStyle(`
   line-height: 26px;
   text-align: center;
   font-size: 14px;
-  font-weight: 600;
   color: #fff;
-  white-space: nowrap;
-  outline: none;
   cursor: pointer;
   -webkit-user-select: none;
-  -moz-user-select: none;
   user-select: none;
   transition: opacity .1s ease-out;
   transition-delay: .1s;
   border-radius: 3px;
   border: 1px solid #db2d74;
   background-color: #db2d74;
-  background-size: 22px;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-image: url("data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJubyI/PjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB2aWV3Qm94PSIwIDAgMjU2IDI1NiIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB4bWw6c3BhY2U9InByZXNlcnZlIiBzdHlsZT0iZmlsbC1ydWxlOmV2ZW5vZGQ7Y2xpcC1ydWxlOmV2ZW5vZGQ7c3Ryb2tlLWxpbmVqb2luOnJvdW5kO3N0cm9rZS1taXRlcmxpbWl0OjEuNDE0MjE7Ij48dXNlIGlkPSJpY29uIC8gZG93bmxvYWQiIHhsaW5rOmhyZWY9IiNfSW1hZ2UxIiB4PSIxNC4wMDkiIHk9IjMzIiB3aWR0aD0iMjI3LjQ5MXB4IiBoZWlnaHQ9IjE5MC40OTdweCIvPjxkZWZzPjxpbWFnZSBpZD0iX0ltYWdlMSIgd2lkdGg9IjIyOHB4IiBoZWlnaHQ9IjE5MXB4IiB4bGluazpocmVmPSJkYXRhOmltYWdlL3BuZztiYXNlNjQsaVZCT1J3MEtHZ29BQUFBTlNVaEVVZ0FBQU9RQUFBQy9DQVlBQUFEdUhuQzVBQUFBQ1hCSVdYTUFBQTdFQUFBT3hBR1ZLdzRiQUFBSm8wbEVRVlI0bk8yZDJhN2pLaEFBbStqKy95LzdQaVRPT0Q3ZXNPa05xcVNSUnJPY3hOQkZOeGpqTWsyVFFEZzJPK1ZPWDVWU2R2K3Erb2VCT2dVaDNmbDJnRWRmTElSRjBBQWdwRDJ1QXA2eHlxaElhZ3hDMmpDSnhCVHdEREtvTFFpcFIxb0o5MEJPZlJDeVBWUHZiWXFZZWlCa0c3ckxobGRCenJZZzVETzZ6NFpYUWN3MklPUTloczJJWjN6RVJNcWJJR1E5Wk1VTElPWTlFUEk2aUhnRHhLd0RJYzlCeEljd3Y3d09RdTdEUExFeFpNdHpFSElic3FJaWlMblB5L3NMQkFRWmxmbTBMNDI4QVVMK1l4SmtOQU1wdDZGa2ZZT0lUckRnOHd0Q0ltTUltRmUrR2Ixa1JjWWdVTUsrR1ZsSVpBd0dVbzVic3FhUmNlTk1uSnF5THZUcEJIdU1YTDZPS0dSWUdZMk96MGdoNmFoU2ppWmtPQm1EckRLRzNKVTBvcFFqQ1JsR3hpQVM3aEZLenRHa0hFVklkeG1EUzdoRkdERkhrbklFSVYxbFRDamlGbEVHdE14dGVJbmVoWXdnWTA5QlJIc3EwN09RYnNFelFPRFF0a3IwS3FSTHdQUWVMQnZRem8zcGNhZU9lWkNVVXJvT2tnUEt3Y3Q4NEFZOUNtbktRc1JSSTdOOE1QdkFucmZZOVNha2FYWWNOQ3Z1Z1pRTjZHa09hU1lqSXA1aTJSZGQ5VU0zR1JJWlEySHBTVGNaUmFRZklVMDZCUm1yTUpHeXQ5SzFCeUZOeWlOa3ZBVlNWcEplU0dRTVQyL1RQRld5QzZsdUl6STJRVjNLWHJKa2FpRzFzeU15Tm9WTWVZSE1RcXJhaUl3cXFFclpRNWJNS3FUcVFnNHlxbUloWlZxeUNxa0dNcHFnWGI2bXRUS2prR3JaRVJuN0lIT1d6Q2lrSnNob0IxbHlnMnhDYW1kSHNFVk55cXhaTXBPUWxLcDlvdGJ1bjRDWmY2VWcrdE1lSmllZmNZUE1IY3Z0anlLQkI5OW9Rc");
 }
 
 .downloadBtn.inStories {
@@ -60,16 +49,13 @@ GM_addStyle(`
   right: 22px;
   border-radius: 50%;
   font-size: 12px;
-  background-size: 18px;
 }
 
 /*
-  ._aagu: Picture outer wrapper (parent of ._aagv)
-  ._aagv: Picture aspect-ratio box — has overflow:hidden so button must live in ._aagu
-  .xyzq4qe.x5yr21d.x87ps6o: Stories card root (current)
+  ._aagu: Picture outer wrapper; the button lives here because its child ._aagv has overflow:hidden
+  div.xyzq4qe.x87ps6o: Stories card root
  */
 ._aagu,
-._aagv,
 div.xyzq4qe.x87ps6o {
   position: relative;
 }
@@ -87,17 +73,7 @@ div.xyzq4qe.x87ps6o:hover .downloadBtn {
 ._aagw {
   display: none !important;
 }
-
-/* Top Bar ._lz6s zIndex > .downloadBtn zIndex */
-._lz6s {
-  z-index: 3 !important;
-}
 `);
-
-
-/*
-  Main
-*/
 
 /**
  * Extract the post author username from a container element.
@@ -109,7 +85,7 @@ function extractUsername(container) {
                container.querySelector('header');
   var anchor = (header || container).querySelector('a[role="link"]._a6hd:not(:has(img))') ||
                (header || container).querySelector('a._a6hd:not(:has(img))');
-  return anchor ? (anchor.textContent || anchor.text || '').trim() : '';
+  return anchor ? anchor.textContent.trim() : '';
 }
 
 function findImg(parent, inStories) {
@@ -126,7 +102,9 @@ function largestUrl(candidates) {
 // The story <img> is sized to the window. React props hold the full-size original for the
 // reel the page was opened on; other reels only hold Relay references, so fall back to the media info API.
 async function fullSizeStoryUrl(img) {
-  var id = window.location.pathname.split('/').filter(Boolean)[2];
+  var parts = window.location.pathname.split('/').filter(Boolean);
+  // Highlight URLs hold the highlight ID, not the media ID.
+  var id = parts[1] !== 'highlights' && parts[2];
   if (!id) return null;
 
   var key = Object.keys(img).find(function(k) { return k.startsWith('__reactFiber$'); });
@@ -165,6 +143,8 @@ document.addEventListener('mouseover', function(event) {
   var btn = document.createElement('button');
   btn.type = 'button';
   btn.className = inStories ? 'downloadBtn inStories' : 'downloadBtn';
+  // U+FE0E keeps the arrow as text instead of an emoji.
+  btn.textContent = '\u2B07\uFE0E';
   btn.setAttribute('aria-label', 'Download');
   btn.title = inStories || onPhotoPage() ? 'Download (D)' : 'Download';
 
@@ -241,7 +221,7 @@ document.addEventListener('keydown', function(event) {
   if (event.code !== 'KeyD' || event.repeat ||
       event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
   var target = event.target;
-  if (target.isContentEditable || (target.closest && target.closest('input, textarea, select, [contenteditable]'))) return;
+  if (target.isContentEditable || (target.closest && target.closest('input, textarea, select'))) return;
 
   var inStories = window.location.pathname.startsWith('/stories/');
   if (!inStories && !onPhotoPage()) return;
@@ -254,7 +234,7 @@ document.addEventListener('keydown', function(event) {
 }, true);
 
 // Skip video stories. 'play' doesn't bubble, so listen in the capture phase.
-// Each story is skipped once, so going back to a video lets it play.
+// Each video is skipped once, so going back to it lets it play. Keyed by src: highlight URLs don't change per item.
 var skipVideos = GM_getValue('skipVideos', true);
 var skipMenuId;
 function updateSkipMenu() {
@@ -267,13 +247,12 @@ function updateSkipMenu() {
 }
 updateSkipMenu();
 
-var skippedStory;
+var skippedVideo;
 document.addEventListener('play', function(event) {
   var video = event.target;
   if (!skipVideos || video.tagName !== 'VIDEO' || !window.location.pathname.startsWith('/stories/')) return;
-  var id = window.location.pathname.split('/').filter(Boolean)[2];
-  if (id === skippedStory) return;
-  skippedStory = id;
+  if (video.currentSrc === skippedVideo) return;
+  skippedVideo = video.currentSrc;
   video.pause();
   // The page has two Next buttons; only the one nearest the video advances this story.
   for (var el = video.parentElement; el; el = el.parentElement) {
