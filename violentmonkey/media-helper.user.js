@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Media Helper for Instagram
 // @namespace    https://github.com/anomalyco/media-helper
-// @version      1.31.0
+// @version      1.32.0
 // @description  Easily download Instagram pictures and skip video stories.
 // @match        *://*.instagram.com/*
 // @grant        GM_download
@@ -166,35 +166,92 @@ document.addEventListener('mouseover', function(event) {
   btn.type = 'button';
   btn.className = inStories ? 'downloadBtn inStories' : 'downloadBtn';
   btn.setAttribute('aria-label', 'Download');
-  btn.title = 'Download';
+  btn.title = inStories || onPhotoPage() ? 'Download (D)' : 'Download';
 
-  btn.addEventListener('click', async function(clickEvent) {
+  btn.addEventListener('click', function(clickEvent) {
     clickEvent.stopPropagation();
-
-    // Read at click time: the story card is reused across stories.
-    var img = findImg(parent, inStories);
-    if (!img || !img.src) return warn('No image found to download');
-    var url = (inStories && await fullSizeStoryUrl(img)) || img.src;
-    var box = inStories ? parent : parent.closest('article') || parent.closest('main');
-    var filename = (box ? extractUsername(box) : '') + '_' + new URL(url).pathname.split('/').pop();
-
-    GM_download({
-      url: url,
-      name: filename,
-      headers: {
-        'Referer': 'https://www.instagram.com/'
-      },
-      onload: function() {
-        log('Download complete:', filename);
-      },
-      onerror: function(err) {
-        warn('Download failed:', filename, err);
-      }
-    });
+    downloadFrom(parent, inStories);
   });
 
   parent.appendChild(btn);
 });
+
+async function downloadFrom(parent, inStories) {
+  // Read at download time: the story card is reused across stories.
+  var img = findImg(parent, inStories);
+  if (!img || !img.src) return warn('No image found to download');
+  var url = (inStories && await fullSizeStoryUrl(img)) || img.src;
+  var box = inStories ? parent : parent.closest('article') || parent.closest('main');
+  var filename = (box ? extractUsername(box) : '') + '_' + new URL(url).pathname.split('/').pop();
+
+  GM_download({
+    url: url,
+    name: filename,
+    headers: {
+      'Referer': 'https://www.instagram.com/'
+    },
+    onload: function() {
+      log('Download complete:', filename);
+    },
+    onerror: function(err) {
+      warn('Download failed:', filename, err);
+    }
+  });
+}
+
+function onPhotoPage() {
+  return /\/p\/[^/]+/.test(window.location.pathname);
+}
+
+function visibleArea(el, frame) {
+  var r = el.getBoundingClientRect();
+  return Math.max(0, Math.min(r.right, frame.right) - Math.max(r.left, frame.left)) *
+         Math.max(0, Math.min(r.bottom, frame.bottom) - Math.max(r.top, frame.top));
+}
+
+// The post comes before the "More posts" grid, so its photo is the first ._aagu.
+// Carousels keep the previous, current and next slides in the DOM; the current one fills the clipping frame.
+function focusedPhoto() {
+  var root = document.querySelector('div[role="dialog"]') || document.querySelector('main');
+  var first = root && root.querySelector('._aagu');
+  var slide = first && first.closest('li');
+  if (!slide) return first;
+
+  var clip = slide.parentElement;
+  while (clip && getComputedStyle(clip).overflowX !== 'hidden') clip = clip.parentElement;
+  if (!clip) return first;
+
+  var frame = clip.getBoundingClientRect();
+  return Array.from(slide.parentElement.querySelectorAll('._aagu')).reduce(function(a, b) {
+    return visibleArea(b, frame) > visibleArea(a, frame) ? b : a;
+  });
+}
+
+// The previous and next stories show as smaller cards beside the current one.
+function focusedStoryCard() {
+  var frame = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+  var cards = Array.from(document.querySelectorAll('div.xyzq4qe.x87ps6o'));
+  return cards.length ? cards.reduce(function(a, b) {
+    return visibleArea(b, frame) > visibleArea(a, frame) ? b : a;
+  }) : null;
+}
+
+// D downloads the focused photo on photo pages and stories. Capture phase so Instagram doesn't also handle it.
+document.addEventListener('keydown', function(event) {
+  if (event.code !== 'KeyD' || event.repeat ||
+      event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+  var target = event.target;
+  if (target.isContentEditable || (target.closest && target.closest('input, textarea, select, [contenteditable]'))) return;
+
+  var inStories = window.location.pathname.startsWith('/stories/');
+  if (!inStories && !onPhotoPage()) return;
+  var parent = inStories ? focusedStoryCard() : focusedPhoto();
+  if (!parent) return warn('No photo found to download');
+
+  event.preventDefault();
+  event.stopPropagation();
+  downloadFrom(parent, inStories);
+}, true);
 
 // Skip video stories. 'play' doesn't bubble, so listen in the capture phase.
 // Each story is skipped once, so going back to a video lets it play.
